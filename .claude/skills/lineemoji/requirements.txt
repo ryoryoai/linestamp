@@ -1,0 +1,8 @@
+# LINE絵文字生成スキル依存関係
+google-genai>=1.0.0
+Pillow>=10.0.0
+
+# 背景透過機能（オプション）
+# rembg>=2.0.0
+# onnxruntime-gpu>=1.18.0  # GPU使用時
+# onnxruntime>=1.18.0      # CPU使用時

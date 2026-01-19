@@ -1,0 +1,29 @@
+# Environment variables
+.env
+.env.local
+.env.*
+
+# Output files
+output/
+
+# Input images (personal files)
+input/*.jpg
+input/*.jpeg
+input/*.png
+input/*.gif
+input/*.avif
+input/backup/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude state (session-specific)
+.claude/state/session*.json
