@@ -241,6 +241,195 @@ Keep descriptions concise but specific. Focus on visual details that can be draw
     return response.text
 
 
+def detect_items_from_image(client, image_path: str) -> list:
+    """
+    参照画像からアイテムを検出してリストで返す
+
+    Args:
+        client: Vertex AI クライアント
+        image_path: 参照画像のパス
+
+    Returns:
+        検出されたアイテムのリスト（例: [{"name": "花束", "description": "ピンクと白のバラの花束", "category": "gift"}]）
+    """
+    image_data, mime_type = load_image_as_base64(image_path)
+
+    prompt = """
+Analyze this image and detect any items/objects that the person is holding, wearing as accessories, or that are prominently featured alongside them.
+
+## Focus on:
+- Items held in hands (flowers, bags, food, toys, etc.)
+- Accessories (hats, glasses, jewelry, etc.)
+- Pets or stuffed animals
+- Notable background objects that are closely associated with the person
+
+## DO NOT include:
+- Clothing (shirts, pants, etc.)
+- Body parts
+- Generic background elements
+
+## Output Format (JSON array):
+Return a JSON array of detected items. If no items found, return empty array [].
+
+```json
+[
+  {
+    "name": "花束",
+    "name_en": "flower bouquet",
+    "description": "ピンクと白のバラの花束、リボン付き",
+    "description_en": "pink and white rose bouquet with ribbon",
+    "category": "gift",
+    "hold_style": "両手で抱える"
+  }
+]
+```
+
+Categories: gift, food, toy, accessory, pet, tool, other
+
+Return ONLY the JSON array, no other text.
+"""
+
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            types.Part.from_bytes(data=base64.b64decode(image_data), mime_type=mime_type),
+            prompt
+        ],
+    )
+
+    result_text = response.text.strip()
+
+    # JSON部分を抽出（```json ... ``` で囲まれている場合）
+    if "```json" in result_text:
+        start = result_text.find("```json") + 7
+        end = result_text.find("```", start)
+        result_text = result_text[start:end].strip()
+    elif "```" in result_text:
+        start = result_text.find("```") + 3
+        end = result_text.find("```", start)
+        result_text = result_text[start:end].strip()
+
+    try:
+        items = json.loads(result_text)
+        if isinstance(items, list):
+            return items
+        return []
+    except json.JSONDecodeError:
+        print(f"警告: アイテム検出結果のパースに失敗: {result_text[:100]}")
+        return []
+
+
+def match_items_to_reactions(client, items: list, reactions: list) -> list:
+    """
+    検出されたアイテムを各リアクションに最適にマッチング
+
+    Args:
+        client: Vertex AI クライアント
+        items: 検出されたアイテムリスト
+        reactions: リアクションリスト
+
+    Returns:
+        アイテム情報が追加されたリアクションリスト
+    """
+    if not items:
+        # アイテムがない場合はそのまま返す
+        return reactions
+
+    # アイテム一覧を作成
+    items_desc = "\n".join([
+        f"- {item['name']} ({item.get('category', 'other')}): {item['description']}"
+        for item in items
+    ])
+
+    # リアクション一覧を作成
+    reactions_desc = "\n".join([
+        f"{i+1}. {r['text']} - {r['emotion']}"
+        for i, r in enumerate(reactions)
+    ])
+
+    prompt = f"""
+Match the detected items to the most suitable reactions for LINE stickers.
+Each reaction can have 0 or 1 item assigned.
+
+## Available Items:
+{items_desc}
+
+## Reactions to match:
+{reactions_desc}
+
+## Matching Rules:
+1. Match items to reactions where holding that item makes sense
+   - "ありがとう！" (thank you) → flower bouquet, gift
+   - "ケーキ！" (cake) → cake, food
+   - "プレゼント！" (present) → gift box
+   - "大好き！" (love) → heart, flower
+2. Some reactions should have NO item (e.g., sleeping, basic emotions)
+3. Don't force items - only assign when it genuinely enhances the sticker
+
+## Output Format (JSON):
+Return a JSON object mapping reaction index (1-based) to item name or null.
+
+```json
+{{
+  "1": "花束",
+  "2": null,
+  "3": "ケーキ",
+  ...
+}}
+```
+
+Return ONLY the JSON object, no other text.
+"""
+
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=prompt,
+    )
+
+    result_text = response.text.strip()
+
+    # JSON部分を抽出
+    if "```json" in result_text:
+        start = result_text.find("```json") + 7
+        end = result_text.find("```", start)
+        result_text = result_text[start:end].strip()
+    elif "```" in result_text:
+        start = result_text.find("```") + 3
+        end = result_text.find("```", start)
+        result_text = result_text[start:end].strip()
+
+    try:
+        matching = json.loads(result_text)
+    except json.JSONDecodeError:
+        print(f"警告: マッチング結果のパースに失敗: {result_text[:100]}")
+        return reactions
+
+    # アイテム情報をリアクションに追加
+    items_dict = {item['name']: item for item in items}
+    enhanced_reactions = []
+
+    for i, reaction in enumerate(reactions):
+        idx = str(i + 1)
+        item_name = matching.get(idx)
+
+        enhanced_reaction = reaction.copy()
+        if item_name and item_name in items_dict:
+            item = items_dict[item_name]
+            enhanced_reaction['item'] = {
+                'name': item['name'],
+                'name_en': item.get('name_en', item['name']),
+                'description': item['description'],
+                'description_en': item.get('description_en', item['description']),
+                'hold_style': item.get('hold_style', '片手で持つ')
+            }
+        else:
+            enhanced_reaction['item'] = None
+
+        enhanced_reactions.append(enhanced_reaction)
+
+    return enhanced_reactions
+
+
 def determine_background_color(client, character_path: str) -> str:
     """
     キャラクター画像を分析して最適な背景色を決定
@@ -472,18 +661,24 @@ def generate_grid_from_character(client, character_path: str, reactions: list, c
     # 背景色を決定（指定がなければデフォルト）
     bg_color = background_color or "light blue #E8F4FC"
 
-    # 12個のリアクションの説明を作成（詳細化版があれば使用）
+    # 12個のリアクションの説明を作成（詳細化版・アイテム情報があれば使用）
     reactions_text_parts = []
     for i, r in enumerate(reactions[:12]):
+        # アイテム情報を追加
+        item_text = ""
+        if r.get('item'):
+            item = r['item']
+            item_text = f"\n  Item: {item['name_en']} ({item['description_en']})\n  Hold style: {item.get('hold_style', 'holding in hands')}"
+
         if 'enhanced_prompt' in r and r['enhanced_prompt']:
             # 詳細化されたプロンプトがある場合
             reactions_text_parts.append(
-                f"Cell {i+1}: \"{r['text']}\"\n{r['enhanced_prompt']}"
+                f"Cell {i+1}: \"{r['text']}\"\n{r['enhanced_prompt']}{item_text}"
             )
         else:
             # 従来形式（フォールバック）
             reactions_text_parts.append(
-                f"Cell {i+1}: \"{r['text']}\" - {r['emotion']}, {r['pose']}"
+                f"Cell {i+1}: \"{r['text']}\" - {r['emotion']}, {r['pose']}{item_text}"
             )
     reactions_text = "\n\n".join(reactions_text_parts)
 
@@ -524,6 +719,12 @@ Style: {style_prompt}
 - NO grid lines between cells
 - Characters should be LARGE and fill most of each cell (minimal margins)
 - Follow the detailed facial expressions and poses described above for each cell
+
+## ITEMS (if specified in cell contents)
+- When an item is specified for a cell, the character MUST be holding/interacting with that item
+- Draw the item in the chibi style matching the character
+- Item should be clearly visible and recognizable
+- Adjust the character's pose to naturally hold the item as described in "Hold style"
 """
 
     response = client.models.generate_content(
@@ -851,14 +1052,19 @@ def generate_eco_sticker_set(client, image_path: str, output_dir: str, remove_bg
         raise
 
 
-def generate_24_stickers(client, image_path: str, output_dir: str, remove_bg: bool = False, chibi_style: str = "ultra_sd"):
+def generate_24_stickers(client, image_path: str, output_dir: str, remove_bg: bool = False, chibi_style: str = "ultra_sd", detect_items: bool = True):
     """24パターン生成（2段階方式）: キャラクター生成→リアクショングリッド生成
 
     改善版ワークフロー:
-    1. 参照写真からサンプルキャラクターを生成（スタイルを確実に適用）
-    2. キャラクターに基づいて背景色を自動決定
-    3. 各リアクションをAIで詳細化
-    4. サンプルキャラクターを参照してリアクショングリッドを生成
+    1. 参照写真からアイテムを検出（オプション）
+    2. 参照写真からサンプルキャラクターを生成（スタイルを確実に適用）
+    3. キャラクターに基づいて背景色を自動決定
+    4. 各リアクションをAIで詳細化
+    5. アイテムとリアクションをマッチング
+    6. サンプルキャラクターを参照してリアクショングリッドを生成
+
+    Args:
+        detect_items: Trueの場合、写真からアイテムを検出してスタンプに反映
     """
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -876,12 +1082,36 @@ def generate_24_stickers(client, image_path: str, output_dir: str, remove_bg: bo
         "style_prompt": style_prompt,
         "character_prompt": None,
         "background_color": None,
+        "detected_items": [],
         "reactions": [],
         "grid_prompts": []
     }
 
+    # Step 0: アイテム検出（オプション）
+    detected_items = []
+    if detect_items:
+        print("\n[Step 0/6] 写真からアイテムを検出中...")
+        try:
+            detected_items = detect_items_from_image(client, image_path)
+            if detected_items:
+                print(f"  検出されたアイテム: {len(detected_items)}個")
+                for item in detected_items:
+                    print(f"    - {item['name']}: {item['description']}")
+                prompts_log["detected_items"] = detected_items
+
+                # items.json を保存
+                items_path = f"{output_dir}/_items.json"
+                with open(items_path, "w", encoding="utf-8") as f:
+                    json.dump(detected_items, f, ensure_ascii=False, indent=2)
+                print(f"  アイテム情報保存: {items_path}")
+            else:
+                print("  アイテムは検出されませんでした")
+        except Exception as e:
+            print(f"  警告: アイテム検出に失敗 ({e})")
+            detected_items = []
+
     # Step 1: サンプルキャラクター生成
-    print("\n[Step 1/5] サンプルキャラクターを生成中...")
+    print("\n[Step 1/6] サンプルキャラクターを生成中...")
     character_path = f"{output_dir}/_character.png"
 
     # キャラクター生成プロンプトを記録
@@ -908,7 +1138,7 @@ Single character illustration only. No grid, no multiple views.
     generate_character_from_reference(client, image_path, character_path, chibi_style=chibi_style)
 
     # Step 2: 背景色を自動決定
-    print("\n[Step 2/5] キャラクターに最適な背景色を決定中...")
+    print("\n[Step 2/6] キャラクターに最適な背景色を決定中...")
     try:
         background_color = determine_background_color(client, character_path)
         print(f"  決定した背景色: {background_color}")
@@ -919,7 +1149,7 @@ Single character illustration only. No grid, no multiple views.
     prompts_log["background_color"] = background_color
 
     # Step 3: リアクションを詳細化
-    print("\n[Step 3/5] 各リアクションを詳細化中...")
+    print("\n[Step 3/6] 各リアクションを詳細化中...")
     reactions_part1 = REACTIONS[:12]
     reactions_part2 = REACTIONS[12:24]
 
@@ -944,23 +1174,46 @@ Single character illustration only. No grid, no multiple views.
             "enhanced_prompt": enhanced_reaction.get("enhanced_prompt")
         })
 
+    # Step 4: アイテムとリアクションのマッチング
+    if detected_items:
+        print("\n[Step 4/6] アイテムとリアクションをマッチング中...")
+        try:
+            enhanced_reactions_all = match_items_to_reactions(client, detected_items, enhanced_reactions_all)
+            # マッチング結果をログに追加
+            for i, r in enumerate(enhanced_reactions_all):
+                if r.get('item'):
+                    prompts_log["reactions"][i]["matched_item"] = r['item']['name']
+                    print(f"  {r['text']} → {r['item']['name']}")
+                else:
+                    prompts_log["reactions"][i]["matched_item"] = None
+        except Exception as e:
+            print(f"  警告: アイテムマッチングに失敗 ({e})")
+    else:
+        print("\n[Step 4/6] アイテムなし（スキップ）")
+
     enhanced_part1 = enhanced_reactions_all[:12]
     enhanced_part2 = enhanced_reactions_all[12:24]
 
-    # Step 4: リアクショングリッド生成（キャラクター画像を参照）
-    print("\n[Step 4/5] リアクショングリッドを生成中...")
+    # Step 5: リアクショングリッド生成（キャラクター画像を参照）
+    print("\n[Step 5/6] リアクショングリッドを生成中...")
 
     for grid_num, reactions_list in enumerate([enhanced_part1, enhanced_part2], 1):
         print(f"  グリッド {grid_num}/2 を生成中...")
 
-        # グリッドプロンプトを構築・記録
+        # グリッドプロンプトを構築・記録（アイテム情報を含む）
         bg_color = background_color or "light blue #E8F4FC"
         reactions_text_parts = []
         for idx, r in enumerate(reactions_list):
+            # アイテム情報を追加
+            item_text = ""
+            if r.get('item'):
+                item = r['item']
+                item_text = f"\n  Item: {item['name_en']} ({item['description_en']})\n  Hold style: {item.get('hold_style', 'holding in hands')}"
+
             if 'enhanced_prompt' in r and r['enhanced_prompt']:
-                reactions_text_parts.append(f"Cell {idx+1}: \"{r['text']}\"\n{r['enhanced_prompt']}")
+                reactions_text_parts.append(f"Cell {idx+1}: \"{r['text']}\"\n{r['enhanced_prompt']}{item_text}")
             else:
-                reactions_text_parts.append(f"Cell {idx+1}: \"{r['text']}\" - {r['emotion']}, {r['pose']}")
+                reactions_text_parts.append(f"Cell {idx+1}: \"{r['text']}\" - {r['emotion']}, {r['pose']}{item_text}")
         reactions_text = "\n\n".join(reactions_text_parts)
 
         grid_prompt = f"""
@@ -1039,13 +1292,16 @@ Style: {style_prompt}
         json.dump(prompts_log, f, ensure_ascii=False, indent=2)
     print(f"\n  プロンプト保存: {prompts_path}")
 
-    print("\n[Step 5/5] 完了!")
+    print("\n[Step 6/6] 完了!")
     print(f"出力先: {output_dir}")
     print(f"  - キャラクター画像: _character.png")
     print(f"  - 背景色: {background_color}")
+    if detected_items:
+        print(f"  - 検出アイテム: {len(detected_items)}個 (_items.json)")
     print(f"  - プロンプト: _prompts.json")
     print(f"  - スタンプ: 24枚")
-    print(f"API呼び出し: 28回（キャラクター1回 + 背景色1回 + 詳細化24回 + グリッド2回）")
+    api_calls = 28 + (2 if detected_items else 0)  # アイテム検出1回 + マッチング1回
+    print(f"API呼び出し: {api_calls}回（キャラクター1回 + 背景色1回 + 詳細化24回 + グリッド2回" + (" + アイテム検出1回 + マッチング1回）" if detected_items else "）"))
 
 
 def generate_main_image(stamp_path: str, output_path: str):
@@ -1129,8 +1385,12 @@ def create_submission_zip(output_dir: str) -> str:
     return str(zip_path)
 
 
-def generate_submission_package(client, image_path: str, output_dir: str, chibi_style: str = "ultra_sd"):
-    """LINE審査申請用パッケージを生成"""
+def generate_submission_package(client, image_path: str, output_dir: str, chibi_style: str = "ultra_sd", detect_items: bool = True):
+    """LINE審査申請用パッケージを生成
+
+    Args:
+        detect_items: Trueの場合、写真からアイテムを検出してスタンプに反映
+    """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     print("=" * 50)
@@ -1139,7 +1399,7 @@ def generate_submission_package(client, image_path: str, output_dir: str, chibi_
 
     # Step 1: 24枚のスタンプを生成（--eco24と同様）
     print("\n[Step 1/4] 24枚のスタンプを生成中...")
-    generate_24_stickers(client, image_path, output_dir, remove_bg=False, chibi_style=chibi_style)
+    generate_24_stickers(client, image_path, output_dir, remove_bg=False, chibi_style=chibi_style, detect_items=detect_items)
 
     # Step 2: スタンプファイル名を申請用に変更（01_ok.png → 01.png）
     print("\n[Step 2/4] ファイル名を申請形式に変更中...")
@@ -1338,6 +1598,8 @@ def main():
     parser.add_argument("--project", help="Google Cloud プロジェクトID")
     parser.add_argument("--no-remove-bg", action="store_true",
                         help="背景除去をスキップ")
+    parser.add_argument("--no-items", action="store_true",
+                        help="アイテム検出をスキップ（デフォルトは写真からアイテムを自動検出）")
     parser.add_argument("--cpu", action="store_true",
                         help="CUDAを使用せずCPUで処理（デフォルトはCUDA優先）")
     parser.add_argument("--check-cuda", action="store_true",
@@ -1394,7 +1656,8 @@ def main():
             sys.exit(1)
 
         output_dir = args.output or f"./output/linestamp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        generate_24_stickers(client, args.eco24, output_dir, remove_bg=False, chibi_style=args.style)
+        detect_items_flag = not getattr(args, 'no_items', False)
+        generate_24_stickers(client, args.eco24, output_dir, remove_bg=False, chibi_style=args.style, detect_items=detect_items_flag)
         return
 
     # 申請パッケージ生成モード
@@ -1404,7 +1667,8 @@ def main():
             sys.exit(1)
 
         output_dir = args.output or f"./output/linestamp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        generate_submission_package(client, args.package, output_dir, chibi_style=args.style)
+        detect_items_flag = not getattr(args, 'no_items', False)
+        generate_submission_package(client, args.package, output_dir, chibi_style=args.style, detect_items=detect_items_flag)
         return
 
     # 通常の生成モード
