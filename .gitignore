@@ -3,6 +3,12 @@
 .env.local
 .env.*
 
+# Service account keys (NEVER commit these)
+*.json
+!package.json
+!tsconfig.json
+!**/reference/*.json
+
 # Output files
 output/
 
@@ -27,3 +33,13 @@ venv/
 
 # Claude state (session-specific)
 .claude/state/session*.json
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Temp files
+temp_*.txt
+temp_*.json
+nul

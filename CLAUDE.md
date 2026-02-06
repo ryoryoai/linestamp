@@ -25,8 +25,7 @@ Vertex AI (gemini-3-pro-image-preview) を使用してLINEスタンプ用画像�
 
 ### 直接実行
 ```bash
-cd .claude/skills/linestamp
-python generate_stamp.py --package ../../../input/参照画像.jpg --output ../../../output/submission
+python .claude/skills/linestamp/scripts/generate_stamp.py --package input/参照画像.jpg --output output/submission
 ```
 
 ## ディレクトリ構成
@@ -37,7 +36,18 @@ linestamp/
 │   └── skills/
 │       └── linestamp/
 │           ├── SKILL.md
-│           └── generate_stamp.py
+│           ├── scripts/
+│           │   ├── generate_stamp.py
+│           │   ├── database.py
+│           │   ├── session_manager.py
+│           │   ├── pose_manager.py
+│           │   ├── pose_tuner.py
+│           │   ├── trend_collector.py
+│           │   ├── image_analyzer.py
+│           │   └── agent/
+│           ├── poses/
+│           ├── reference/
+│           └── requirements.txt
 ├── input/
 ├── output/
 └── requirements.txt
