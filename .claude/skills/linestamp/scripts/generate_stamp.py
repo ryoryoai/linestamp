@@ -4715,7 +4715,7 @@ def main():
     # スタイルオプション（旧スタイルIDもエイリアスで対応）
     all_style_choices = list(CHIBI_STYLES.keys()) + list(STYLE_ALIASES.keys())
     parser.add_argument("--style", choices=all_style_choices,
-                        default="sd_25", help="スタイル（推奨: sd_25, sd_10, sd_30, face_only, yuru_line）")
+                        default=None, help="スタイル（推奨: sd_25, sd_10, sd_30, face_only, yuru_line）")
     parser.add_argument("--type", "-t", choices=["stamp", "main", "tab"],
                         default="stamp", help="画像タイプ")
     parser.add_argument("--count", "-c", type=int, default=1,
@@ -4727,9 +4727,9 @@ def main():
                         help="アイテム検出をスキップ（デフォルトは写真からアイテムを自動検出）")
     # モディファイアオプション
     parser.add_argument("--text-mode", choices=["none", "small", "deka"],
-                        default="deka", help="テキストモード（デフォルト: deka=でか文字）")
+                        default=None, help="テキストモード（デフォルト: deka=でか文字）")
     parser.add_argument("--outline", choices=["none", "white", "bold"],
-                        default="bold", help="アウトライン（デフォルト: bold=太フチ）")
+                        default=None, help="アウトライン（デフォルト: bold=太フチ）")
     parser.add_argument("--cpu", action="store_true",
                         help="CUDAを使用せずCPUで処理（デフォルトはCUDA優先）")
     parser.add_argument("--check-cuda", action="store_true",

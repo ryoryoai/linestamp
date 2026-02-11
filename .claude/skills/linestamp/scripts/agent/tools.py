@@ -98,6 +98,16 @@ def linestamp_generate_package(
         "--outline", outline
     ]
 
+    # ペルソナ（DB駆動REACTIONS選択）
+    if persona_age or persona_target or persona_theme:
+        if persona_age:
+            cmd.extend(["--persona-age", persona_age])
+        if persona_target:
+            cmd.extend(["--persona-target", persona_target])
+        if persona_theme:
+            cmd.extend(["--persona-theme", persona_theme])
+        cmd.extend(["--persona-intensity", str(persona_intensity)])
+
     if items_mode == "off":
         cmd.append("--no-items")
 

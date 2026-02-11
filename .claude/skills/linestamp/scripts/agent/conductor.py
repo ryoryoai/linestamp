@@ -163,9 +163,9 @@ class LinestampConductor:
    - yuru_line: ゆる線画
 
 3. **ペルソナ** (任意)
-   - 年代: Kid / Teen / 20s / 30s+
+   - 年代: Teen / 20s / 30s / 40s / 50s+
    - 相手: Friend / Family / Partner / Work
-   - テーマ: 共感強化 / ツッコミ強化 / 褒め強化 / 家族強化 など
+   - テーマ: 共感強化 / ツッコミ強化 / 褒め強化 / 家族強化 / 応援強化
 
 4. **出力形式** (任意、デフォルト: package)
    - package: 申請パッケージ（24枚+main+tab+ZIP）
@@ -262,6 +262,8 @@ class LinestampConductor:
                 parameters["persona_target"] = config.persona_target
             if config.persona_theme:
                 parameters["persona_theme"] = config.persona_theme
+            if config.persona_age or config.persona_target or config.persona_theme:
+                parameters["persona_intensity"] = config.persona_intensity
             if config.output_dir:
                 parameters["output_dir"] = config.output_dir
 

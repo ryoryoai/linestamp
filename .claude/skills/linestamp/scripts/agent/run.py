@@ -242,7 +242,7 @@ async def run_agent_sdk(
 
     if session_id:
         print(f"\n[セッションID: {session_id}]")
-        print("継続するには: python run.py --sdk --resume {session_id} --prompt '...'")
+        print(f"継続するには: python run.py --sdk --resume {session_id} --prompt '...'")
 
     return session_id
 
