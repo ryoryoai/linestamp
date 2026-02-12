@@ -20,6 +20,20 @@ def get_db_path() -> Path:
     return Path(os.environ.get("LINESTAMP_DB_PATH", DEFAULT_DB_PATH))
 
 
+def ensure_database():
+    """DBファイルが無ければ自動で初期化＋シード投入"""
+    db_path = get_db_path()
+    if db_path.exists():
+        return
+    print(f"[DB] データベースが見つかりません。初期化します: {db_path}")
+    init_database()
+    try:
+        from seed_master_data import seed_all
+        seed_all()
+    except ImportError:
+        print("[DB] seed_master_data.py が見つかりません。テーブルのみ作成しました。")
+
+
 def get_connection() -> sqlite3.Connection:
     """データベース接続を取得"""
     db_path = get_db_path()

@@ -25,6 +25,7 @@ import io
 # ポーズマスタ参照
 try:
     from database import (
+        ensure_database,
         get_pose as db_get_pose,
         get_pose_master,
         get_text_master,
@@ -34,6 +35,7 @@ try:
         update_pose_master_stats,
         get_persona_config,
     )
+    ensure_database()
     POSE_DB_AVAILABLE = True
     MASTER_DB_AVAILABLE = True
 except ImportError:
