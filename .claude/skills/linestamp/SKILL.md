@@ -600,6 +600,14 @@ save_template("名前", reactions, age="30s+", target="Friend", theme="共感強
 
 ---
 
+## ガードレール
+
+| 禁止 | 理由 | 正しい対応 |
+|------|------|-----------|
+| パイプラインのステップをスキップする | 特に validate, transparent を飛ばすと品質未達のまま提出される | 各ステップの結果をユーザーに見せてから次に進む。QC は省略不可 |
+| 他セッションの output/ を削除・上書きする | 他のスタンプセットの成果物が失われる | 出力は常に `output/linestamp-XXXXXXXX/` 配下。他セッションのディレクトリには触れない |
+| input/ 内のファイルを削除・移動・上書きする | ユーザー提供の原本を保護 | input/ は read-only 扱い。加工結果は全て output/ 配下に書き出す |
+
 ## 事前確認事項
 
 - **ADC認証**: `gcloud auth application-default login` が必要
